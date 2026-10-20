@@ -1,0 +1,43 @@
+name: Build ShadowMountPlus Plugin
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PS5_PAYLOAD_SDK: /opt/ps5-payload-sdk
+      LLVM_CONFIG: /usr/bin/llvm-config-18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 lld-18 llvm-18 cmake ninja-build python3 python3-pyelftools unzip
+      - name: Install PS5 Payload SDK v0.44
+        run: |
+          curl --fail --location --retry 3 https://github.com/ps5-payload-dev/sdk/releases/download/v0.44/ps5-payload-sdk.zip -o "$RUNNER_TEMP/sdk.zip"
+          sudo unzip -q "$RUNNER_TEMP/sdk.zip" -d /opt
+          test -f "$PS5_PAYLOAD_SDK/bin/prospero-clang"
+      - name: Configure
+        run: cmake --preset ps5
+      - name: Build and validate plugin descriptor
+        run: cmake --build --preset ps5 --parallel 2
+      - name: Prepare installable ELF
+        run: |
+          test -s build-ps5/bin/shadowmountplus.elf
+          mkdir -p dist
+          cp build-ps5/bin/shadowmountplus.elf dist/SMPL00001.elf
+          file dist/SMPL00001.elf
+          readelf -h dist/SMPL00001.elf
+          sha256sum dist/SMPL00001.elf > dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ShadowMountPlus-OnionHEN-plugin
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
